@@ -243,7 +243,7 @@ Resources:
                           'Tags': [
                               {
                                   'Key': 'Name',
-                                  'Value': 'Ant Media Server'
+                                  'Value': 'Ant-Media-Server'
                               },
                           ]
                       },
@@ -280,7 +280,7 @@ Resources:
 
           def lambda_handler(event, context):
               tag_key = 'Name'
-              tag_value = 'Ant Media Server'
+              tag_value = 'Ant-Media-Server'
 
               instances = ec2.describe_instances(
                   Filters=[

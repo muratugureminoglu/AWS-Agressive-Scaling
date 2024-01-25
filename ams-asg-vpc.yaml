@@ -95,7 +95,7 @@ Resources:
         DesiredCapacity: 0
         Tags:
         - Key: Name
-          Value: Antmedia-Origin
+          Value: Ant-Media-Server
           PropagateAtLaunch: 'true'
 
   LaunchTemplateOrigin:
