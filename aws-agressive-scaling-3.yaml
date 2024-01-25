@@ -226,7 +226,7 @@ Resources:
 
           ec2 = boto3.client('ec2')
 
-          def lambda_handler(event, context):
+          def start_new_instance():
               instance_type = "t2.micro"
               key_name = "murat"
               image_id = "ami-0e5f882be1900e43b"
@@ -251,6 +251,15 @@ Resources:
               )
 
               print(response)
+
+          def lambda_handler(event, context):
+              start_new_instance()
+
+              return {
+                  'statusCode': 200,
+                  'body': 'New instance has been started.'
+              }
+
         
       Description: AWS Lambda function
       FunctionName: 'Create'
