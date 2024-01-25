@@ -483,6 +483,7 @@ Resources:
                   - "ec2:CreateTags"
                   - "ec2:DescribeInstances"
                   - "autoscaling:UpdateAutoScalingGroup"
+                  - "autoscaling:DescribeAutoScalingGroups"
                 Resource: "*"
       Path: '/'
 
