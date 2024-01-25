@@ -1,8 +1,167 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
-Description: AWS API Gateway with a Lambda Integration
+Description: Ant Media Server - AWS API Gateway, ASG, Lambda 
 
 Resources:
+
+  AntMediaVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-AntMedia-VPC
+
+  OriginZone:
+    Type: AWS::EC2::Subnet
+    DependsOn: AntMediaVPC
+    Properties:
+      VpcId: !Ref AntMediaVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-AntMedia-Origin-Subnet
+
+  EdgeZone:
+    Type: AWS::EC2::Subnet
+    DependsOn: AntMediaVPC
+    Properties:
+      VpcId: !Ref AntMediaVPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-AntMedia-Edge-Subnet
+
+  DefaultGateway:
+    Type: AWS::EC2::InternetGateway
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref DefaultGateway
+      VpcId: !Ref AntMediaVPC
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref AntMediaVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-AntMedia-Route-Table
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      GatewayId: !Ref DefaultGateway
+      DestinationCidrBlock: 0.0.0.0/0
+
+  SubnetRouteTableAssociationOrigin:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref OriginZone
+
+  SubnetRouteTableAssociationEdge:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref EdgeZone
+
+  OriginGroup:
+      Type: 'AWS::AutoScaling::AutoScalingGroup'
+      DependsOn:
+      - LaunchTemplateOrigin
+      Properties:
+        VPCZoneIdentifier: 
+          - !Ref OriginZone
+        LaunchTemplate:
+          LaunchTemplateName: !Sub ${AWS::StackName}-AntMedia-LaunchTemplateOrigin
+          Version: !GetAtt 'LaunchTemplateOrigin.LatestVersionNumber'
+        MinSize: 0
+        MaxSize: 10
+        DesiredCapacity: 0
+        Tags:
+        - Key: Name
+          Value: Ant-Media-Server
+          PropagateAtLaunch: 'true'
+
+  LaunchTemplateOrigin:
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: !Sub ${AWS::StackName}-AntMedia-LaunchTemplateOrigin
+      LaunchTemplateData:
+        InstanceType: t2.micro
+        KeyName: murat
+        ImageId: ami-0e5f882be1900e43b
+        SecurityGroupIds:
+          - !GetAtt "InstanceSecurityGroup.GroupId"
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 10
+              VolumeType: gp2
+              DeleteOnTermination: true
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            apt-get update 
+            apt-get install -y python3-pip
+            apt-get install -y python3-setuptools
+            mkdir -p /opt/aws/bin
+            wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+            python3 -m easy_install --script-dir /opt/aws/bin aws-cfn-bootstrap-py3-latest.tar.gz
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource OriginGroup --region ${AWS::Region}
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: OriginInstance
+      TagSpecifications:
+        - ResourceType: launch-template
+          Tags:
+            - Key: Name
+              Value: !Sub ${AWS::StackName}-AntMedia-LaunchTemplateOrigin
+
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access and HTTP access on the configured port
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/24
+        - IpProtocol: tcp
+          FromPort: '5080'
+          ToPort: '5080'
+          CidrIp: 10.0.0.0/16
+        - IpProtocol: tcp
+          FromPort: '1935'
+          ToPort: '1935'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: '50000'
+          ToPort: '60000'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '5000'
+          ToPort: '5000'
+          CidrIp: 10.0.0.0/16
+      VpcId: !Ref AntMediaVPC
 
   ApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
@@ -224,40 +383,32 @@ Resources:
         ZipFile: |
           import boto3
 
-          ec2 = boto3.client('ec2')
+          def lambda_handler(event, context):
+              autoscaling_client = boto3.client('autoscaling')
+              asg_names = autoscaling_client.describe_auto_scaling_groups()
+              asg_name = [group for group in asg_names['AutoScalingGroups'] if
+                                 'OriginGroup' in group['AutoScalingGroupName']]
+              auto_scaling_group_name = [group['AutoScalingGroupName'] for group in asg_name][0]
 
-          def start_new_instance():
-              instance_type = "t2.micro"
-              key_name = "murat"
-              image_id = "ami-0e5f882be1900e43b"
+              print(auto_scaling_group_name)
 
-              response = ec2.run_instances(
-                  ImageId=image_id,
-                  InstanceType=instance_type,
-                  KeyName=key_name,
-                  MinCount=1,
-                  MaxCount=1,
-                  TagSpecifications=[
-                      {
-                          'ResourceType': 'instance',
-                          'Tags': [
-                              {
-                                  'Key': 'Name',
-                                  'Value': 'Ant-Media-Server'
-                              },
-                          ]
-                      },
-                  ]
+              origin_autoscaling_group = autoscaling_client.describe_auto_scaling_groups(
+                  AutoScalingGroupNames=[auto_scaling_group_name])
+
+              new_desired_capacity = 1
+              min_size = 1
+
+              autoscaling_client = boto3.client('autoscaling')
+              response = autoscaling_client.update_auto_scaling_group(
+                  AutoScalingGroupName=auto_scaling_group_name,
+                  DesiredCapacity=new_desired_capacity,
+                  MinSize=min_size
               )
 
-              print(response)
-
-          def lambda_handler(event, context):
-              start_new_instance()
-
+              print(f"DesiredCapacity of Auto Scaling Group '{auto_scaling_group_name}' is set to {new_desired_capacity}")
               return {
                   'statusCode': 200,
-                  'body': 'New instance has been started.'
+                  'body': f"DesiredCapacity of Auto Scaling Group '{auto_scaling_group_name}' is set to {new_desired_capacity}"
               }
 
         
@@ -331,6 +482,7 @@ Resources:
                   - "ec2:RunInstances"
                   - "ec2:CreateTags"
                   - "ec2:DescribeInstances"
+                  - "autoscaling:UpdateAutoScalingGroup"
                 Resource: "*"
       Path: '/'
 
