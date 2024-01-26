@@ -641,9 +641,9 @@ Resources:
         S3Bucket:
           Fn::Join:
           - '-'
-          - - elasticbeanstalk-samples
+          - - ams-beanstalk
             - Ref: AWS::Region
-        S3Key: php-sample.zip
+        S3Key: php.zip
   SampleConfigurationTemplate:
     Type: AWS::ElasticBeanstalk::ConfigurationTemplate
     Properties:
