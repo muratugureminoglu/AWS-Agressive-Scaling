@@ -594,6 +594,7 @@ Resources:
                   - "autoscaling:DescribeAutoScalingGroups"
                 Resource: "*"
       Path: '/'
+
   WebServerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -676,9 +677,15 @@ Resources:
         - Namespace: "aws:ec2:vpc"
           OptionName: "Subnets"
           Value: !Ref OriginZone
+        - Namespace: "aws:elasticbeanstalk:application:environment"
+          OptionName: "STATUS_URL"
+          Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/v1/status'
+        - Namespace: "aws:elasticbeanstalk:application:environment"
+          OptionName: "CREATE_URL"
+          Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/v1/create'
 
 Outputs:
-  RootUrl:
+  ApiGatewayEndpointUrl:
     Description: Root URL of the API gateway
     Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com'
 
