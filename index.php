@@ -1,7 +1,7 @@
 <?php
 
-$status_url = "";
-$create_url = "";
+$status_url = getenv('STATUS_URL');
+$create_url = getenv('CREATE_URL');
 
 $curl = curl_init();
 curl_setopt($curl, CURLOPT_URL, $status_url);
