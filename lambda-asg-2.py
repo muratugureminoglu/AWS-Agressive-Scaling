@@ -19,7 +19,7 @@ def wait_for_instances_running(auto_scaling_group_name):
                     print("Instance is running. Exiting the loop.")
                     return instances  # Return instances once they are running
 
-        time.sleep(10)
+        time.sleep(1)
 
 def lambda_handler(event, context):
     autoscaling_client = boto3.client('autoscaling')
