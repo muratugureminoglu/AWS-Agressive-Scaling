@@ -18,7 +18,16 @@ if ($status_data_array && isset($status_data_array['statusCode']) && $status_dat
     curl_setopt($create_curl, CURLOPT_HEADER, false);
     $create_response = curl_exec($create_curl);
     curl_close($create_curl);
-    echo $create_response;
+#    echo $create_response;
+    $create_response_array = json_decode($create_response, true);
+
+    $ip_address_from_create_response = isset($create_response_array['body']) ? $create_response_array['body'] : null;
+
+    if ($ip_address_from_create_response !== null) {
+        echo $ip_address_from_create_response;
+    } else {
+        echo "Not Found.";
+    }
 }
 
 curl_close($curl);
