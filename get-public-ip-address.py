@@ -5,12 +5,13 @@ def lambda_handler(event, context):
 
     instances = ec2_client.describe_instances(
         Filters=[
-            {'Name': 'tag:Name', 'Values': ['Ant-Media-Server']}
+            {'Name': 'tag:Name', 'Values': ['Ant-Media-Server']},
+            {'Name': 'instance-state-name', 'Values': ['running']}
         ]
     )
 
     if 'Reservations' in instances and instances['Reservations']:
-        instance = instances['Reservations'][1]['Instances'][0]
+        instance = instances['Reservations'][0]['Instances'][0]
     
         # Check if the instance has a public IP address
         if 'PublicIpAddress' in instance:
