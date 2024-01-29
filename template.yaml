@@ -157,7 +157,7 @@ Resources:
           LaunchTemplateName: !Sub ${AWS::StackName}-AntMedia-LaunchTemplateOrigin
           Version: !GetAtt 'LaunchTemplateOrigin.LatestVersionNumber'
         MinSize: 0
-        MaxSize: 10
+        MaxSize: 1
         DesiredCapacity: 0
         Tags:
         - Key: Name
@@ -169,7 +169,7 @@ Resources:
     Properties:
       LaunchTemplateName: !Sub ${AWS::StackName}-AntMedia-LaunchTemplateOrigin
       LaunchTemplateData:
-        InstanceType: t2.micro
+        InstanceType: t3.medium
         KeyName: murat
         ImageId: ami-0e5f882be1900e43b
         SecurityGroupIds:
@@ -689,7 +689,7 @@ Outputs:
     Description: Root URL of the API gateway
     Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com'
 
-  URL:
+  BeanstalkEndpointURL:
     Description: URL of the AWS Elastic Beanstalk Environment
     Value:
       Fn::Join:
