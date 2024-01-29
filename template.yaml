@@ -738,3 +738,12 @@ Outputs:
     Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com'
 
 
+  BeansTalkURL:
+    Description: URL of the AWS Elastic Beanstalk Environment
+    Value:
+      Fn::Join:
+      - ''
+      - - https://
+        - Fn::GetAtt:
+          - SampleEnvironment
+          - EndpointURL
