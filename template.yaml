@@ -163,19 +163,53 @@ Resources:
         MinSize: 0
         MaxSize: 1
         DesiredCapacity: 0
+        TargetGroupARNs:
+          - !Ref ALBTargetGroupOrigin 
         Tags:
         - Key: Name
           Value: Ant-Media-Server
           PropagateAtLaunch: 'true'
+
+  ALBTargetGroupOrigin:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      Port: 5080
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref AntMediaVPC
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: 'true'
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: '30'
+
+  ALBListener5443:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    DependsOn:
+      - GetEBLoadBalancerArn
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref SslCertificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroupOrigin
+      LoadBalancerArn: !Ref GetEBLoadBalancer
+      Port: '5443'
+      Protocol: HTTPS
 
   LaunchTemplateOrigin:
     Type: 'AWS::EC2::LaunchTemplate'
     Properties:
       LaunchTemplateName: !Sub ${AWS::StackName}-AntMedia-LaunchTemplateOrigin
       LaunchTemplateData:
-        InstanceType: t3.medium
+        InstanceType: c5.xlarge
         KeyName: murat
-        ImageId: ami-0e5f882be1900e43b
+        ImageId: ami-05e70772e64e3d76f
         SecurityGroupIds:
           - !GetAtt "InstanceSecurityGroup.GroupId"
         BlockDeviceMappings:
@@ -231,9 +265,9 @@ Resources:
           ToPort: '60000'
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: '5000'
-          ToPort: '5000'
-          CidrIp: 10.0.0.0/16
+          FromPort: '5443'
+          ToPort: '5443'
+          CidrIp: 0.0.0.0/0
       VpcId: !Ref AntMediaVPC
 
   ApiGatewayRestApi:
@@ -577,6 +611,54 @@ Resources:
       Runtime: python3.12
       Timeout: 60
 
+  GetEBLoadBalancerArn:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - SampleEnvironment
+    Properties:
+      Runtime: python3.8
+      Handler: index.handler
+      Role: !GetAtt LambdaIamRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import traceback
+
+          def handler(event, context):
+              try:
+                  elasticbeanstalk = boto3.client('elasticbeanstalk')
+                  environment_name = event['ResourceProperties']['EnvironmentName']
+
+                  response = elasticbeanstalk.describe_environment_resources(
+                      EnvironmentName=environment_name
+                  )
+
+                  # Load balancer bilgilerini içeren listeyi al
+                  load_balancers = response['EnvironmentResources']['LoadBalancers']
+
+                  if load_balancers:
+                      # İlk yük dengeleyicisinin adını al
+                      load_balancer_name = load_balancers[0].get('Name')
+                      if load_balancer_name:
+                          cfnresponse.send(event, context, cfnresponse.SUCCESS, {"LoadBalancerName": load_balancer_name}, load_balancer_name)
+                      else:
+                          cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": "Load balancer name not found."})
+                  else:
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": "No load balancers found for the environment."})
+            
+              except Exception as e:
+                  traceback.print_exc()
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+  GetEBLoadBalancer:
+    Type: Custom::GetEBLoadBalancer
+    Properties:
+      ServiceToken: !Sub ${GetEBLoadBalancerArn.Arn}
+      EnvironmentName: !Ref SampleEnvironment
+
+
   LambdaIamRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -600,6 +682,17 @@ Resources:
                   - "ec2:DescribeInstances"
                   - "autoscaling:UpdateAutoScalingGroup"
                   - "autoscaling:DescribeAutoScalingGroups"
+                  - "elasticbeanstalk:DescribeEnvironmentResources"
+                Resource: "*"
+        - PolicyName: "CloudWatchLogsPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
                 Resource: "*"
       Path: '/'
 
