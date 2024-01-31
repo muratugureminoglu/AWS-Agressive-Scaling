@@ -66,14 +66,8 @@ function checkAndCreate($status_url, $create_url) {
         curl_close($create_curl);
 
         $create_response_array = json_decode($create_response, true);
-
-        $ip_address_from_create_response = isset($create_response_array['body']) ? $create_response_array['body'] : null;
-
-        if ($ip_address_from_create_response !== null) {
-            echo $ip_address_from_create_response;
-        } else {
-            echo "IP Adres bulunamadı.";
-        }
+        sleep(20);
+                
     }
 
     curl_close($curl);
@@ -86,7 +80,5 @@ $region = getRegion();
 
 updateHtmlContentForEnvironments($region);
 checkAndCreate($status_url, $create_url);
-
-sleep(20);
 
 ?>
