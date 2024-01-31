@@ -45,13 +45,13 @@ function checkAndCreate($status_url, $create_url) {
 
         $create_response_array = json_decode($create_response, true);
 
-        $ip_address_from_create_response = isset($create_response_array['body']) ? $create_response_array['body'] : null;
+#        $ip_address_from_create_response = isset($create_response_array['body']) ? $create_response_array['body'] : null;
 
-        if ($ip_address_from_create_response !== null) {
-            echo $ip_address_from_create_response;
-        } else {
-            echo "IP Adres bulunamadı.";
-        }
+#        if ($ip_address_from_create_response !== null) {
+#            echo $ip_address_from_create_response;
+#        } else {
+#            echo "IP Adres bulunamadı.";
+#        }
     }
 
     curl_close($curl);
