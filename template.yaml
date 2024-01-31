@@ -208,7 +208,7 @@ Resources:
       LaunchTemplateName: !Sub ${AWS::StackName}-AntMedia-LaunchTemplateOrigin
       LaunchTemplateData:
         InstanceType: c5.xlarge
-        KeyName: murat
+        KeyName: !Ref KeyName
         ImageId: ami-05e70772e64e3d76f
         SecurityGroupIds:
           - !GetAtt "InstanceSecurityGroup.GroupId"
@@ -739,11 +739,7 @@ Resources:
       ApplicationName:
         Ref: SampleApplication
       SourceBundle:
-        S3Bucket:
-          Fn::Join:
-          - '-'
-          - - ams-beanstalk
-            - Ref: AWS::Region
+        S3Bucket: 'ams-beanstalk' 
         S3Key: php.zip
   SampleConfigurationTemplate:
     Type: AWS::ElasticBeanstalk::ConfigurationTemplate
