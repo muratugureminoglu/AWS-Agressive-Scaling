@@ -278,7 +278,7 @@ Resources:
       EndpointConfiguration:
         Types:
           - EDGE
-      Name: lambda-api
+      Name: Ant Media Server Api Gateway
 
   ApiGatewayCreateResource:
     Type: AWS::ApiGateway::Resource
@@ -563,7 +563,6 @@ Resources:
 
         
       Description: AWS Lambda function
-      FunctionName: 'Create'
       Handler: "index.lambda_handler"  
       MemorySize: 256
       Role: !GetAtt LambdaIamRole.Arn
@@ -604,7 +603,6 @@ Resources:
               return response
         
       Description: AWS Lambda function
-      FunctionName: 'Status'
       Handler: "index.lambda_handler"  
       MemorySize: 256
       Role: !GetAtt LambdaIamRole.Arn
