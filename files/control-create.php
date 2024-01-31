@@ -4,11 +4,33 @@ require 'vendor/autoload.php';
 
 use Aws\ElasticBeanstalk\ElasticBeanstalkClient;
 
-function updateHtmlContentForEnvironments()
+function getRegion()
+{
+    $tokenRequest = curl_init();
+    curl_setopt($tokenRequest, CURLOPT_URL, "http://169.254.169.254/latest/api/token");
+    curl_setopt($tokenRequest, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($tokenRequest, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_setopt($tokenRequest, CURLOPT_HTTPHEADER, array("X-aws-ec2-metadata-token-ttl-seconds: 3600"));
+
+    $token = curl_exec($tokenRequest);
+    curl_close($tokenRequest);
+
+    $regionRequest = curl_init();
+    curl_setopt($regionRequest, CURLOPT_URL, "http://169.254.169.254/latest/meta-data/placement/region");
+    curl_setopt($regionRequest, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($regionRequest, CURLOPT_HTTPHEADER, array("X-aws-ec2-metadata-token: $token"));
+
+    $region = curl_exec($regionRequest);
+    curl_close($regionRequest);
+
+    return trim($region); 
+}
+
+function updateHtmlContentForEnvironments($region)
 {
     $elasticBeanstalkClient = new ElasticBeanstalkClient([
         'version' => 'latest',
-        'region' => 'eu-west-2',
+        'region' => $region,
     ]);
 
     $environmentsResult = $elasticBeanstalkClient->describeEnvironments([]);
@@ -45,13 +67,13 @@ function checkAndCreate($status_url, $create_url) {
 
         $create_response_array = json_decode($create_response, true);
 
-#        $ip_address_from_create_response = isset($create_response_array['body']) ? $create_response_array['body'] : null;
+        $ip_address_from_create_response = isset($create_response_array['body']) ? $create_response_array['body'] : null;
 
-#        if ($ip_address_from_create_response !== null) {
-#            echo $ip_address_from_create_response;
-#        } else {
-#            echo "IP Adres bulunamadı.";
-#        }
+        if ($ip_address_from_create_response !== null) {
+            echo $ip_address_from_create_response;
+        } else {
+            echo "IP Adres bulunamadı.";
+        }
     }
 
     curl_close($curl);
@@ -60,13 +82,11 @@ function checkAndCreate($status_url, $create_url) {
 $status_url = getenv('STATUS_URL');
 $create_url = getenv('CREATE_URL');
 
+$region = getRegion();
 
-updateHtmlContentForEnvironments();
+updateHtmlContentForEnvironments($region);
 checkAndCreate($status_url, $create_url);
 
 sleep(20);
 
 ?>
-
-
-
