@@ -1,0 +1,78 @@
+Resources:
+  MyLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: InstanceDeleteTestFunction
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import boto3
+
+          def lambda_handler(event, context):
+              # Auto Scaling grubunuzun adı
+              auto_scaling_group_name = 'ams-test-OriginGroup-jWe2DfeRbMMI'
+
+              autoscaling = boto3.client('autoscaling')
+              response = autoscaling.update_auto_scaling_group(
+                  AutoScalingGroupName=auto_scaling_group_name,
+                  MinSize=0,
+                  DesiredCapacity=0
+              )
+
+              print(response)
+
+              return {
+                  'statusCode': 200,
+                  'body': 'Auto Scaling Group updated successfully!'
+              }
+
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: LambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - autoscaling:UpdateAutoScalingGroup
+                Resource: '*'
+
+  MyLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref MyLambdaFunction
+      Principal: lambda.alarms.cloudwatch.amazonaws.com
+      SourceArn: !GetAtt AutoScalingGroupScaleDownAlarm.Arn
+
+  AutoScalingGroupScaleDownAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: AutoScalingGroupScaleDownAlarm
+      ComparisonOperator: LessThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: CPUUtilization 
+      Namespace: AWS/EC2
+      Period: 300  
+      Statistic: Average
+      Threshold: 50
+      ActionsEnabled: true
+      AlarmActions:
+        - !GetAtt MyLambdaFunction.Arn
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: ams-test-OriginGroup-jWe2DfeRbMMI
