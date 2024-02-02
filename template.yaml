@@ -483,6 +483,7 @@ Resources:
                   - !GetAtt LambdaCreateFunction.Arn
                   - !GetAtt LambdaStatusFunction.Arn 
 
+  # Lambda Function trigger by API Gateway 
   LambdaCreateFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -569,6 +570,7 @@ Resources:
       Runtime: python3.12
       Timeout: 60
 
+  # Lambda Function trigger by API Gateway 
   LambdaStatusFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -609,10 +611,11 @@ Resources:
       Runtime: python3.12
       Timeout: 60
 
+  # Lambda function to get Elastic Beanstalk Load Balancer ARN
   GetEBLoadBalancerArn:
     Type: AWS::Lambda::Function
     DependsOn:
-      - SampleEnvironment
+      - AMSEnvironment
     Properties:
       Runtime: python3.8
       Handler: index.handler
@@ -650,13 +653,50 @@ Resources:
                   traceback.print_exc()
                   cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
 
+  # Custom resource to get Elastic Beanstalk Load Balancer information
   GetEBLoadBalancer:
     Type: Custom::GetEBLoadBalancer
     Properties:
       ServiceToken: !Sub ${GetEBLoadBalancerArn.Arn}
-      EnvironmentName: !Ref SampleEnvironment
+      EnvironmentName: !Ref AMSEnvironment
 
+  # Lambda Function trigger by Cloudwatch
+  LambdaCloudwatchFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: InstanceDeleteFunction
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaIamRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+      MemorySize: 128
+      Environment:
+        Variables:
+          AUTO_SCALING_GROUP_NAME: !Sub "${AWS::StackName}-OriginGroup" 
+      Code:
+        ZipFile: |
+          import boto3
 
+          def lambda_handler(event, context):
+              autoscaling_client = boto3.client('autoscaling')
+              asg_names = autoscaling_client.describe_auto_scaling_groups()
+              asg_origin_name = [group for group in asg_names['AutoScalingGroups'] if
+                                 'OriginGroup' in group['AutoScalingGroupName']]
+              asg_origin_group_names = [group['AutoScalingGroupName'] for group in asg_origin_name][0]
+              response = autoscaling_client.update_auto_scaling_group(
+                  AutoScalingGroupName=asg_origin_group_names,
+                  MinSize=0,
+                  DesiredCapacity=0
+              )
+
+              print(response)
+
+              return {
+                  'statusCode': 200,
+                  'body': 'Auto Scaling Group updated successfully!'
+              }
+
+  # General IAM Role for Lambda Functions
   LambdaIamRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -694,6 +734,35 @@ Resources:
                 Resource: "*"
       Path: '/'
 
+  # Lambda Resource Based Policy for Cloudwatch
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaCloudwatchFunction
+      Principal: lambda.alarms.cloudwatch.amazonaws.com
+      SourceArn: !GetAtt AutoScalingGroupScaleDownAlarm.Arn
+
+  # Cloudwatch rule to set 0 in Autoscale
+  AutoScalingGroupScaleDownAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: AutoScalingGroupScaleDownAlarm
+      ComparisonOperator: LessThanOrEqualToThreshold
+      EvaluationPeriods: 3
+      MetricName: CPUUtilization 
+      Namespace: AWS/EC2
+      Period: 300  
+      Statistic: Average
+      Threshold: 10
+      ActionsEnabled: true
+      AlarmActions:
+        - !GetAtt LambdaCloudwatchFunction.Arn
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref OriginGroup
+
+  # BeansTalk 
   WebServerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -726,24 +795,24 @@ Resources:
       Path: /
       Roles:
       - Ref: WebServerRole
-  SampleApplication:
+  AMSApplication:
     Type: AWS::ElasticBeanstalk::Application
     Properties:
       Description: AWS Elastic Beanstalk Sample PHP Application
-  SampleApplicationVersion:
+  AMSApplicationVersion:
     Type: AWS::ElasticBeanstalk::ApplicationVersion
     Properties:
       Description: Version 1.0
       ApplicationName:
-        Ref: SampleApplication
+        Ref: AMSApplication
       SourceBundle:
         S3Bucket: 'ams-beanstalk' 
         S3Key: php.zip
-  SampleConfigurationTemplate:
+  AMSConfigurationTemplate:
     Type: AWS::ElasticBeanstalk::ConfigurationTemplate
     Properties:
       ApplicationName:
-        Ref: SampleApplication
+        Ref: AMSApplication
       Description: SSH access to PHP Application
       SolutionStackName: 64bit Amazon Linux 2023 v4.0.4 running PHP 8.2
       OptionSettings:
@@ -755,16 +824,16 @@ Resources:
         OptionName: IamInstanceProfile
         Value:
           Ref: WebServerInstanceProfile
-  SampleEnvironment:
+  AMSEnvironment:
     Type: AWS::ElasticBeanstalk::Environment
     Properties:
       Description: AWS Elastic Beanstalk Environment running Sample PHP Application
       ApplicationName:
-        Ref: SampleApplication
+        Ref: AMSApplication
       TemplateName:
-        Ref: SampleConfigurationTemplate
+        Ref: AMSConfigurationTemplate
       VersionLabel:
-        Ref: SampleApplicationVersion
+        Ref: AMSApplicationVersion
       OptionSettings:
         - Namespace: "aws:ec2:vpc"
           OptionName: "VPCId"
@@ -832,5 +901,5 @@ Outputs:
       - ''
       - - https://
         - Fn::GetAtt:
-          - SampleEnvironment
+          - AMSEnvironment
           - EndpointURL
