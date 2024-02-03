@@ -11,7 +11,6 @@ Parameters:
     Type: String
     Description: "AWS ARN to ACM generated SSL certificate." 
 
-
 Mappings:
   Region2Principal:
     us-east-1:
