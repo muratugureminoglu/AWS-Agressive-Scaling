@@ -269,6 +269,16 @@ Resources:
           CidrIp: 0.0.0.0/0
       VpcId: !Ref AntMediaVPC
 
+  LambdaSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "Lambda Security Group"
+      GroupDescription: "Lambda Traffic"
+      VpcId: !Ref AntMediaVPC
+      SecurityGroupEgress:
+      - IpProtocol: "-1"
+        CidrIp: "0.0.0.0/0"
+
   ApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -444,6 +454,7 @@ Resources:
 
   ApiGatewayStage:
     Type: AWS::ApiGateway::Stage
+    DependsOn: ApiGatewayDeployment
     Properties:
       DeploymentId: !Ref ApiGatewayDeployment
       Description: Lambda API Stage v1
@@ -568,6 +579,12 @@ Resources:
       Role: !GetAtt LambdaIamRole.Arn
       Runtime: python3.12
       Timeout: 60
+ #     VpcConfig:
+ #         SecurityGroupIds:
+ #         - !Ref "LambdaSecurityGroup"
+ #         SubnetIds:
+ #         - !Ref OriginZone
+ #         - !Ref EdgeZone
 
   # Lambda Function trigger by API Gateway 
   LambdaStatusFunction:
@@ -609,6 +626,12 @@ Resources:
       Role: !GetAtt LambdaIamRole.Arn
       Runtime: python3.12
       Timeout: 60
+#      VpcConfig:
+#          SecurityGroupIds:
+#          - !Ref "LambdaSecurityGroup"
+#          SubnetIds:
+#          - !Ref OriginZone
+#          - !Ref EdgeZone
 
   # Lambda function to get Elastic Beanstalk Load Balancer ARN
   GetEBLoadBalancerArn:
@@ -616,17 +639,13 @@ Resources:
     DependsOn:
       - AMSEnvironment
     Properties:
-      Runtime: python3.8
-      Handler: index.handler
-      Role: !GetAtt LambdaIamRole.Arn
-      Timeout: 60
       Code:
         ZipFile: |
           import boto3
           import cfnresponse
           import traceback
 
-          def handler(event, context):
+          def lambda_handler(event, context):
               try:
                   elasticbeanstalk = boto3.client('elasticbeanstalk')
                   environment_name = event['ResourceProperties']['EnvironmentName']
@@ -651,6 +670,10 @@ Resources:
               except Exception as e:
                   traceback.print_exc()
                   cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+      Runtime: python3.12
+      Handler: "index.lambda_handler"
+      Role: !GetAtt LambdaIamRole.Arn
+      Timeout: 60
 
   # Custom resource to get Elastic Beanstalk Load Balancer information
   GetEBLoadBalancer:
@@ -663,15 +686,6 @@ Resources:
   LambdaCloudwatchFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: InstanceDeleteFunction
-      Handler: index.lambda_handler
-      Role: !GetAtt LambdaIamRole.Arn
-      Runtime: python3.8
-      Timeout: 60
-      MemorySize: 128
-      Environment:
-        Variables:
-          AUTO_SCALING_GROUP_NAME: !Sub "${AWS::StackName}-OriginGroup" 
       Code:
         ZipFile: |
           import boto3
@@ -694,6 +708,15 @@ Resources:
                   'statusCode': 200,
                   'body': 'Auto Scaling Group updated successfully!'
               }
+      #FunctionName: InstanceDeleteFunction
+      Handler: "index.lambda_handler"
+      Role: !GetAtt LambdaIamRole.Arn
+      Runtime: python3.12
+      Timeout: 60
+      MemorySize: 128
+      Environment:
+        Variables:
+          AUTO_SCALING_GROUP_NAME: !Sub "${AWS::StackName}-OriginGroup" 
 
   # General IAM Role for Lambda Functions
   LambdaIamRole:
@@ -720,6 +743,9 @@ Resources:
                   - "autoscaling:UpdateAutoScalingGroup"
                   - "autoscaling:DescribeAutoScalingGroups"
                   - "elasticbeanstalk:DescribeEnvironmentResources"
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:DeleteNetworkInterface"
                 Resource: "*"
         - PolicyName: "CloudWatchLogsPolicy"
           PolicyDocument:
@@ -761,8 +787,8 @@ Resources:
         - Name: AutoScalingGroupName
           Value: !Ref OriginGroup
 
-  # BeansTalk 
-  WebServerRole:
+###########################Beanstalk###########################
+  AMSWebServerRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -777,23 +803,23 @@ Resources:
           Action:
           - sts:AssumeRole
       Path: /
-  WebServerRolePolicy:
+  AMSWebServerRolePolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: WebServerRole
+      PolicyName: AMSWebServerRole
       PolicyDocument:
         Statement:
         - Effect: Allow
           NotAction: iam:*
           Resource: '*'
       Roles:
-      - Ref: WebServerRole
+      - Ref: AMSWebServerRole
   WebServerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: /
       Roles:
-      - Ref: WebServerRole
+      - Ref: AMSWebServerRole
   AMSApplication:
     Type: AWS::ElasticBeanstalk::Application
     Properties:
@@ -886,7 +912,7 @@ Resources:
             - - !Ref OriginZone
               - !Ref EdgeZone  
 
-
+###########################Beanstalk###########################
 Outputs:
   ApiGatewayEndpointUrl:
     Description: Root URL of the API gateway
