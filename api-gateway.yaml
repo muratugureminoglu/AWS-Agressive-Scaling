@@ -2,14 +2,17 @@
 
   ApiGatewayApiKey:
     Type: 'AWS::ApiGateway::ApiKey'
+    DependsOn: ApiGatewayStage
     Properties:
       Name: MyAPIKey
       Enabled: true
       StageKeys:
         - RestApiId: !Ref ApiGatewayRestApi
           StageName: 'v1'
+
   ApiGatewayUsagePlan:
     Type: 'AWS::ApiGateway::UsagePlan'
+    DependsOn: ApiGatewayApiKey
     Properties:
       ApiStages:
         - ApiId: !Ref ApiGatewayRestApi
@@ -22,8 +25,6 @@
         BurstLimit: 500
         RateLimit: 1000
       UsagePlanName: MyUsagePlan
-      ApiKeys:
-        - !Ref ApiGatewayApiKey
 
   ApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
@@ -182,7 +183,7 @@
   LambdaIamRole:
     Type: "AWS::IAM::Role"
     Properties:
-      RoleName: "MyLambdaExecutionRole-new"
+      RoleName: !Sub "MyLambdaExecutionRole-${AWS::StackName}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
