@@ -26,6 +26,14 @@
         RateLimit: 1000
       UsagePlanName: MyUsagePlan
 
+  ApiUsagePlanKey:
+    Type: 'AWS::ApiGateway::UsagePlanKey'
+    DependsOn: ApiGatewayUsagePlan
+    Properties:
+      KeyId: !Ref ApiGatewayApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiGatewayUsagePlan
+
   ApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
