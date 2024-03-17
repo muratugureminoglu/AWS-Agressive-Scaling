@@ -1,10 +1,9 @@
- Resources: 
-
+Resources: 
   ApiGatewayApiKey:
     Type: 'AWS::ApiGateway::ApiKey'
     DependsOn: ApiGatewayStage
     Properties:
-      Name: MyAPIKey
+      Name: AMSAPIKey
       Enabled: true
       StageKeys:
         - RestApiId: !Ref ApiGatewayRestApi
@@ -218,6 +217,7 @@
                   - "elasticloadbalancing:DeleteRule"
                   - "elasticloadbalancing:DescribeTargetGroups"
                   - "elasticloadbalancing:CreateRule"
+                  - "apigateway:GET"
                 Resource: "*"
         - PolicyName: "CloudWatchLogsPolicy"
           PolicyDocument:
@@ -230,3 +230,57 @@
                   - "logs:PutLogEvents"
                 Resource: "*"
       Path: '/'
+
+  LambdaGetApiKey:
+    Type: AWS::Lambda::Function
+    DependsOn: ApiGatewayApiKey
+    Properties:
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import traceback
+
+          def lambda_handler(event, context):
+              try:
+                  api_key_name = "AMSAPIKey"
+                  
+                  client = boto3.client('apigateway')
+
+                  response = client.get_api_keys(
+                      nameQuery=api_key_name,
+                      includeValues=True
+                  )
+                  
+                  if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+                      api_key_value = response['items'][0]['value']
+                      print("API Key Value:", api_key_value)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {"APIKeyValue": api_key_value})
+                      return {"APIKeyValue": api_key_value}  
+                  else:
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": "Failed to retrieve API key"})
+                      return {"Error": "Failed to retrieve API key"}  
+              except Exception as e:
+                  traceback.print_exc()
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+                  return {"Error": str(e)}  
+
+                      
+      Description: AWS Lambda function
+      Handler: "index.lambda_handler"  
+      MemorySize: 256
+      Role: !GetAtt LambdaIamRole.Arn
+      Runtime: python3.12 
+      Timeout: 60
+
+  LambdaApiValue:
+    Type: Custom::LambdaApiKey
+    DependsOn: LambdaGetApiKey
+    Properties:
+      ServiceToken: !Sub "${LambdaGetApiKey.Arn}"
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/"
+  ApiKey:
+    Value: !GetAtt LambdaApiValue.APIKeyValue
